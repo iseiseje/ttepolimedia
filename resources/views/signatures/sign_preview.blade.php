@@ -1,10 +1,62 @@
+@php
+    $user = auth()->user();
+    $isGuest = $user && method_exists($user, 'isGuest') && $user->isGuest();
+@endphp
+
+@if($isGuest)
+<x-guest-layout>
+    <div class="py-12">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="p-6 text-gray-900">
+                    @if($signature->status === 'signed')
+                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">Dokumen Anda telah diverifikasi dan ditandatangani dosen/admin.</span>
+                        </div>
+                    @endif
+                    @if(session('success'))
+                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">{{ session('success') }}</span>
+                        </div>
+                    @endif
+                    @if(session('info'))
+                        <div class="mb-4 bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">{{ session('info') }}</span>
+                        </div>
+                    @endif
+                    <form id="qrForm" action="{{ route('signatures.sign-finalize-as-guest', $signature) }}" method="POST">
+                        @csrf
+                        <input type="hidden" name="page" id="page" value="1">
+                        <input type="hidden" name="x" id="x">
+                        <input type="hidden" name="y" id="y">
+                        <div class="mb-4">
+                            <label for="pageSelect" class="block text-sm font-medium text-gray-700">Pilih Halaman</label>
+                            <select id="pageSelect" class="mt-1 block w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></select>
+                        </div>
+                        <div class="w-full overflow-auto">
+                            <div id="pdf-container" class="relative border shadow mx-auto" style="display:inline-block;">
+                                <canvas id="pdf-canvas" style="border:1px solid #ccc;"></canvas>
+                                <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=preview" alt="QR Code" style="position:absolute; top:50px; left:50px; cursor:move; z-index:10;{{ $signature->status === 'qr_placed' ? ' filter: hue-rotate(-50deg) saturate(5) brightness(1.2);' : '' }}">
+                            </div>
+                        </div>
+                        <div class="mt-4 flex justify-center">
+                            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                                Tempatkan QR Code & Kirim untuk Persetujuan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</x-guest-layout>
+@else
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
             {{ __('Preview & Tempel QR Code') }}
         </h2>
     </x-slot>
-
     <div class="py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
@@ -14,6 +66,16 @@
                             Kembali ke Daftar Dokumen
                         </a>
                     </div>
+                    @if(session('success'))
+                        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">{{ session('success') }}</span>
+                        </div>
+                    @endif
+                    @if(session('info'))
+                        <div class="mb-4 bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative" role="alert">
+                            <span class="block sm:inline">{{ session('info') }}</span>
+                        </div>
+                    @endif
                     <form id="qrForm" action="{{ route('signatures.sign-finalize', $signature) }}" method="POST">
                         @csrf
                         <input type="hidden" name="page" id="page" value="1">
@@ -23,11 +85,13 @@
                             <label for="pageSelect" class="block text-sm font-medium text-gray-700">Pilih Halaman</label>
                             <select id="pageSelect" class="mt-1 block w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></select>
                         </div>
-                        <div id="pdf-container" class="relative border shadow" style="width: 600px; height: 800px;">
+                        <div class="w-full overflow-auto">
+                            <div id="pdf-container" class="relative border shadow mx-auto" style="display:inline-block;">
                             <canvas id="pdf-canvas" style="border:1px solid #ccc;"></canvas>
-                            <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=preview" alt="QR Code" style="position:absolute; top:50px; left:50px; width:100px; height:100px; cursor:move; z-index:10;">
+                                <img id="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=preview" alt="QR Code" style="position:absolute; top:50px; left:50px; z-index:10;{{ $signature->status === 'qr_placed' ? ' filter: hue-rotate(-50deg) saturate(5) brightness(1.2);' : '' }}">
+                            </div>
                         </div>
-                        <div class="mt-4">
+                        <div class="mt-4 flex justify-center">
                             <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
                                 Simpan & Tempel QR Code
                             </button>
@@ -37,7 +101,10 @@
             </div>
         </div>
     </div>
+</x-app-layout>
+@endif
 
+    </div>
     <!-- PDF.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"></script>
@@ -46,7 +113,7 @@
     </script>
     <script>
         // Path PDF
-        const url = '{{ asset('storage/' . ltrim($signature->document_path, '/')) }}';
+        const url = '{{ asset('storage/' . ltrim(($signature->status === "qr_placed" || $signature->status === "signed") && $signature->signed_document_path ? $signature->signed_document_path : $signature->document_path, "/")) }}';
         let pdfDoc = null, pageNum = 1, pageRendering = false, pageNumPending = null;
         let scale = 1.2;
         const canvas = document.getElementById('pdf-canvas');
@@ -54,6 +121,13 @@
         const qr = document.getElementById('qr-code');
         const pdfContainer = document.getElementById('pdf-container');
         let offsetX, offsetY, isDragging = false;
+        // Data posisi QR dari backend
+        const qrPlaced = @json($signature->status === 'qr_placed');
+        const qrPage = @json($signature->qr_page);
+        const qrX = @json($signature->qr_x);
+        const qrY = @json($signature->qr_y);
+        const qrCanvasWidth = @json($signature->qr_canvas_width);
+        const qrCanvasHeight = @json($signature->qr_canvas_height);
 
         // PDF.js load
         pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
@@ -65,6 +139,12 @@
                 opt.text = 'Halaman ' + i;
                 document.getElementById('pageSelect').appendChild(opt);
             }
+            // Jika status qr_placed, set page ke qr_page
+            if(qrPlaced && qrPage) {
+                pageNum = parseInt(qrPage);
+                document.getElementById('pageSelect').value = qrPage;
+                document.getElementById('page').value = qrPage;
+            }
             renderPage(pageNum);
         }).catch(function(error) {
             alert('Gagal memuat PDF. Pastikan file dapat diakses dan format PDF valid. Error: ' + error.message);
@@ -73,14 +153,40 @@
         function renderPage(num) {
             pageRendering = true;
             pdfDoc.getPage(num).then(function(page) {
-                const viewport = page.getViewport({scale: scale});
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                pdfContainer.style.width = viewport.width + 'px';
-                pdfContainer.style.height = viewport.height + 'px';
+                // Fit to parent width
+                const parentWidth = pdfContainer.parentElement.clientWidth;
+                const viewport = page.getViewport({scale: 1});
+                const scale = parentWidth / viewport.width;
+                const scaledViewport = page.getViewport({scale: scale});
+
+                canvas.height = scaledViewport.height;
+                canvas.width = scaledViewport.width;
+                pdfContainer.style.width = scaledViewport.width + 'px';
+                pdfContainer.style.height = scaledViewport.height + 'px';
+
+                // Scale QR Code Preview
+                const qrSize = canvas.width / 8;
+                qr.style.width = qrSize + 'px';
+                qr.style.height = qrSize + 'px';
+
+                // Jika status qr_placed dan halaman sama, posisikan QR code sesuai data
+                if(qrPlaced && qrPage && parseInt(qrPage) === num && qrCanvasWidth && qrCanvasHeight) {
+                    // Konversi posisi dari guest ke skala preview sekarang
+                    const scaleX = canvas.width / qrCanvasWidth;
+                    const scaleY = canvas.height / qrCanvasHeight;
+                    qr.style.left = (qrX * scaleX) + 'px';
+                    qr.style.top = (qrY * scaleY) + 'px';
+                    qr.style.pointerEvents = 'none'; // Nonaktifkan drag
+                } else {
+                    // Default posisi QR code
+                    qr.style.left = '50px';
+                    qr.style.top = '50px';
+                    qr.style.pointerEvents = 'auto';
+                }
+
                 const renderContext = {
                     canvasContext: ctx,
-                    viewport: viewport
+                    viewport: scaledViewport
                 };
                 const renderTask = page.render(renderContext);
                 renderTask.promise.then(function() {
@@ -99,7 +205,8 @@
             renderPage(pageNum);
         });
 
-        // Drag QR code
+        // Drag QR code (hanya jika bukan qr_placed)
+        if(!qrPlaced) {
         qr.addEventListener('mousedown', function(e) {
             isDragging = true;
             offsetX = e.offsetX;
@@ -120,6 +227,7 @@
         document.addEventListener('mouseup', function(e) {
             isDragging = false;
         });
+        }
 
         // Submit posisi QR code
         document.getElementById('qrForm').addEventListener('submit', function(e) {
@@ -152,4 +260,3 @@
             }
         });
     </script>
-</x-app-layout> 

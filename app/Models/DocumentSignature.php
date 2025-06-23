@@ -13,6 +13,7 @@ class DocumentSignature extends Model
         'guest_id',
         'dosen_id',
         'document_path',
+        'signed_document_path',
         'original_filename',
         'status',
         'notes',

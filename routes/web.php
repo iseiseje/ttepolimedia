@@ -7,7 +7,7 @@ use App\Http\Controllers\VerificationController;
 use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
-    return view('welcome');
+    return view('landing_astro');
 });
 
 Route::get('/dashboard', function () {
@@ -26,7 +26,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/signatures/{signature}/download', [DocumentSignatureController::class, 'download'])->name('signatures.download');
     Route::get('/signatures/{signature}/sign-preview', [DocumentSignatureController::class, 'signPreview'])->name('signatures.sign-preview');
     Route::post('/signatures/{signature}/sign-finalize', [DocumentSignatureController::class, 'signFinalize'])->name('signatures.sign-finalize');
+    Route::post('/signatures/{signature}/approve-qr', [DocumentSignatureController::class, 'approveQrPlacement'])->name('signatures.approve-qr');
 });
+
+Route::get('/signatures/{signature}/sign-as-guest', [DocumentSignatureController::class, 'signAsGuest'])->name('signatures.sign-as-guest');
+Route::post('/signatures/{signature}/sign-finalize-as-guest', [DocumentSignatureController::class, 'signFinalizeAsGuest'])->name('signatures.sign-finalize-as-guest');
 
 Route::get('/verification/{unique_code}', [VerificationController::class, 'show'])->name('verification.show');
 Route::get('/verification/{unique_code}/download', [VerificationController::class, 'download'])->name('verification.download');

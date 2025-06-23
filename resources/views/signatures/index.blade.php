@@ -66,7 +66,7 @@
                             </thead>
                             <tbody>
                                 @foreach($signatures as $signature)
-                                    <tr class="@if($signature->status === 'signed') bg-green-50 @elseif($signature->status === 'rejected') bg-red-50 @else bg-yellow-50 @endif">
+                                    <tr class="@if($signature->status === 'signed') bg-green-50 @elseif($signature->status === 'rejected') bg-red-50 @elseif($signature->status === 'qr_placed') bg-blue-50 @else bg-yellow-50 @endif">
                                         <td class="px-6 py-4 whitespace-no-wrap border-b border-gray-500">
                                             <div class="flex items-center">
                                                 @if($signature->status === 'signed')
@@ -76,6 +76,10 @@
                                                 @elseif($signature->status === 'rejected')
                                                     <svg class="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                    </svg>
+                                                @elseif($signature->status === 'qr_placed')
+                                                    <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                                     </svg>
                                                 @else
                                                     <svg class="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -124,9 +128,14 @@
                                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                                 @if($signature->status === 'signed') bg-green-100 text-green-800
                                                 @elseif($signature->status === 'rejected') bg-red-100 text-red-800
+                                                @elseif($signature->status === 'qr_placed') bg-blue-100 text-blue-800
                                                 @else bg-yellow-100 text-yellow-800
                                                 @endif">
+                                                @if($signature->status === 'qr_placed')
+                                                    QR Code Placed
+                                                @else
                                                 {{ ucfirst($signature->status) }}
+                                                @endif
                                             </span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-no-wrap border-b border-gray-500">
@@ -143,6 +152,13 @@
                                                         <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
                                                     </svg>
                                                     Rejected
+                                                </span>
+                                            @elseif($signature->status === 'qr_placed')
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
+                                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                                    </svg>
+                                                    Waiting Approval
                                                 </span>
                                             @else
                                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">
@@ -188,6 +204,49 @@
                                                         </svg>
                                                         Reject
                                                     </button>
+                                                @endif
+
+                                                @if((auth()->user()->isDosen() || auth()->user()->isAdmin()) && $signature->status === 'qr_placed')
+                                                    <!-- Approve QR Placement Button -->
+                                                    <form action="{{ route('signatures.approve-qr', $signature) }}" method="POST" class="inline">
+                                                        @csrf
+                                                        <button type="submit" 
+                                                                class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                                                onclick="return confirm('Apakah Anda yakin ingin menyetujui dan menandatangani dokumen ini?')">
+                                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                            </svg>
+                                                            Approve & Sign
+                                                        </button>
+                                                    </form>
+                                                    
+                                                    <!-- Reject Button -->
+                                                    <button onclick="showRejectModal({{ $signature->id }})" 
+                                                            class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                        </svg>
+                                                        Reject
+                                                    </button>
+                                                @endif
+
+                                                @if(auth()->user()->isGuest() && $signature->status === 'pending')
+                                                    <!-- Sign as Guest Button -->
+                                                    <a href="{{ route('signatures.sign-preview', $signature) }}"
+                                                       class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                        Sign as Guest
+                                                    </a>
+                                                @endif
+
+                                                @if(auth()->user()->isGuest() && $signature->status === 'qr_placed')
+                                                    <!-- QR Code Placed Status for Guest -->
+                                                    <span class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100">
+                                                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                                        </svg>
+                                                        QR Code Placed - Waiting Approval
+                                                    </span>
                                                 @endif
 
                                                 @if((auth()->user()->isDosen() || auth()->user()->isAdmin()) && $signature->status === 'signed')
