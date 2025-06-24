@@ -116,46 +116,63 @@ class DocumentSignatureController extends Controller
             ]);
 
             // 1. Generate unique code
-            $unique_code = Str::uuid()->toString();
+            $unique_code = \Illuminate\Support\Str::uuid()->toString();
             $verificationUrl = url('/verification/' . $unique_code);
 
             // 2. Generate QR code PNG (MERAH, pakai endroid/qr-code v6.x builder)
-            $qrCode = new \Endroid\QrCode\QrCode(
-                $verificationUrl,
-                new \Endroid\QrCode\Encoding\Encoding('UTF-8'),
-                \Endroid\QrCode\ErrorCorrectionLevel::High,
-                300,
-                0,
-                \Endroid\QrCode\RoundBlockSizeMode::Margin,
-                new \Endroid\QrCode\Color\Color(255, 0, 0), // merah
-                new \Endroid\QrCode\Color\Color(255, 255, 255) // putih
-            );
-            $writer = new \Endroid\QrCode\Writer\PngWriter();
-            $qrResult = $writer->write($qrCode);
-            $qrPath = storage_path('app/tmp_qr_' . $unique_code . '.png');
-            $qrResult->saveToFile($qrPath);
+            try {
+                $qrCode = new \Endroid\QrCode\QrCode(
+                    $verificationUrl,
+                    new \Endroid\QrCode\Encoding\Encoding('UTF-8'),
+                    \Endroid\QrCode\ErrorCorrectionLevel::High,
+                    300,
+                    0,
+                    \Endroid\QrCode\RoundBlockSizeMode::Margin,
+                    new \Endroid\QrCode\Color\Color(255, 0, 0), // merah
+                    new \Endroid\QrCode\Color\Color(255, 255, 255) // putih
+                );
+                $writer = new \Endroid\QrCode\Writer\PngWriter();
+                $qrResult = $writer->write($qrCode);
+                $qrPath = storage_path('app/tmp_qr_' . $unique_code . '.png');
+                $qrResult->saveToFile($qrPath);
+                \Log::info('QR merah berhasil dibuat', ['qrPath' => $qrPath]);
+            } catch (\Exception $e) {
+                \Log::error('Gagal generate QR merah: ' . $e->getMessage());
+                return back()->withErrors(['error' => 'Gagal generate QR merah: ' . $e->getMessage()]);
+            }
             // Simpan salinan QR code merah untuk debug
             copy($qrPath, storage_path('app/public/tmp_qr_debug.png'));
 
             // 3. Add QR code to PDF
             $pdfPath = storage_path('app/public/' . $signature->document_path);
-            $outputPdfPath = storage_path('app/public/signed_documents/signed_' . basename($signature->document_path));
+            // --- PERBAIKAN: simpan hasil QR merah di documents/signed_... ---
+            $outputPdfPath = storage_path('app/public/documents/signed_' . basename($signature->document_path));
             if (!file_exists(dirname($outputPdfPath))) {
                 mkdir(dirname($outputPdfPath), 0755, true);
             }
-
-            $this->addQrToPdf($pdfPath, $outputPdfPath, $qrPath, $request->page, $request->x, $request->y);
+            if (!file_exists($pdfPath)) {
+                \Log::error('File PDF asli tidak ditemukan saat QR merah: ' . $pdfPath);
+                return back()->withErrors(['error' => 'File PDF asli tidak ditemukan.']);
+            }
+            try {
+                $this->addQrToPdf($pdfPath, $outputPdfPath, $qrPath, $request->page, $request->x, $request->y, $request->input('canvas_width'), $request->input('canvas_height'));
+                \Log::info('QR merah berhasil ditempel ke PDF', ['outputPdfPath' => $outputPdfPath]);
+            } catch (\Exception $e) {
+                \Log::error('Gagal menempel QR merah ke PDF: ' . $e->getMessage());
+                return back()->withErrors(['error' => 'Gagal menempel QR merah ke PDF: ' . $e->getMessage()]);
+            }
 
             // 4. Update signature record - QR code placed but not signed yet
             $signature->update([
                 'status' => 'qr_placed', // New status indicating QR code has been placed
-                'signed_document_path' => 'signed_documents/signed_' . basename($signature->document_path),
+                'signed_document_path' => 'documents/signed_' . basename($signature->document_path),
                 'qr_page' => $request->page,
                 'qr_x' => $request->x,
                 'qr_y' => $request->y,
                 'qr_canvas_width' => $request->input('canvas_width'),
                 'qr_canvas_height' => $request->input('canvas_height'),
             ]);
+            \Log::info('Signature record diupdate setelah QR merah', ['signature_id' => $signature->id]);
 
             // 5. Create verification record
             Verification::create([
@@ -165,6 +182,7 @@ class DocumentSignatureController extends Controller
                 'document_name' => $signature->original_filename,
                 'signed_at' => now()
             ]);
+            \Log::info('Verification record dibuat', ['signature_id' => $signature->id, 'unique_code' => $unique_code]);
 
             // 6. Clean up temporary QR code file
             if (file_exists($qrPath)) {
@@ -174,6 +192,7 @@ class DocumentSignatureController extends Controller
             return redirect()->route('signatures.index')->with('success', 'QR code telah ditempatkan. Menunggu persetujuan dosen.');
 
         } catch (\Exception $e) {
+            \Log::error('Gagal proses signFinalizeAsGuest: ' . $e->getMessage());
             return back()->withErrors(['error' => 'Failed to place QR code: ' . $e->getMessage()]);
         }
     }
@@ -195,34 +214,54 @@ class DocumentSignatureController extends Controller
         // Generate QR code warna hitam (pakai endroid/qr-code v6.x builder)
         $unique_code = Verification::where('document_signature_id', $signature->id)->value('unique_code');
         $verificationUrl = url('/verification/' . $unique_code);
-        $qrCode = new \Endroid\QrCode\QrCode(
-            $verificationUrl,
-            new \Endroid\QrCode\Encoding\Encoding('UTF-8'),
-            \Endroid\QrCode\ErrorCorrectionLevel::High,
-            300,
-            0,
-            \Endroid\QrCode\RoundBlockSizeMode::Margin,
-            new \Endroid\QrCode\Color\Color(0, 0, 0), // hitam
-            new \Endroid\QrCode\Color\Color(255, 255, 255) // putih
-        );
-        $writer = new \Endroid\QrCode\Writer\PngWriter();
-        $qrResult = $writer->write($qrCode);
-        $qrPath = storage_path('app/tmp_qr_final_' . $unique_code . '.png');
-        $qrResult->saveToFile($qrPath);
+        try {
+            $qrCode = new \Endroid\QrCode\QrCode(
+                $verificationUrl,
+                new \Endroid\QrCode\Encoding\Encoding('UTF-8'),
+                \Endroid\QrCode\ErrorCorrectionLevel::High,
+                300,
+                0,
+                \Endroid\QrCode\RoundBlockSizeMode::Margin,
+                new \Endroid\QrCode\Color\Color(0, 0, 0), // hitam
+                new \Endroid\QrCode\Color\Color(255, 255, 255) // putih
+            );
+            $writer = new \Endroid\QrCode\Writer\PngWriter();
+            $qrResult = $writer->write($qrCode);
+            $qrPath = storage_path('app/tmp_qr_final_' . $unique_code . '.png');
+            $qrResult->saveToFile($qrPath);
+            \Log::info('QR hitam berhasil dibuat', ['qrPath' => $qrPath]);
+        } catch (\Exception $e) {
+            \Log::error('Gagal generate QR hitam: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Gagal generate QR hitam: ' . $e->getMessage()]);
+        }
         // Tempel QR hitam ke PDF hasil final
         $inputPdfPath = storage_path('app/public/' . $signature->signed_document_path);
         $outputPdfPath = storage_path('app/public/signed_documents/signed_final_' . basename($signature->document_path));
-        $this->addQrToPdf($inputPdfPath, $outputPdfPath, $qrPath, $signature->qr_page, $signature->qr_x, $signature->qr_y);
+
+        // Tambahkan pengecekan file input
+        if (!file_exists($inputPdfPath)) {
+            \Log::error('File input QR merah tidak ditemukan untuk approve TTE: ' . $inputPdfPath);
+            return back()->withErrors(['error' => 'File dokumen dengan QR merah tidak ditemukan. Tidak bisa approve TTE.']);
+        }
+        try {
+            $this->addQrToPdf($inputPdfPath, $outputPdfPath, $qrPath, $signature->qr_page, $signature->qr_x, $signature->qr_y, $signature->qr_canvas_width, $signature->qr_canvas_height);
+            \Log::info('QR hitam berhasil ditempel ke PDF', ['outputPdfPath' => $outputPdfPath]);
+        } catch (\Exception $e) {
+            \Log::error('Gagal menempel QR hitam ke PDF: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Gagal menempel QR hitam ke PDF: ' . $e->getMessage()]);
+        }
         // Update path dan status
         $signature->update([
             'status' => 'signed',
             'signed_at' => now(),
             'signed_document_path' => 'signed_documents/signed_final_' . basename($signature->document_path),
         ]);
+        \Log::info('Signature record diupdate setelah QR hitam', ['signature_id' => $signature->id]);
         if (file_exists($qrPath)) {
             unlink($qrPath);
         }
 
+        \Log::info('Approve TTE berhasil, file hasil: ' . $outputPdfPath);
         return redirect()->route('signatures.index')
             ->with('success', 'Document approved and signed successfully.');
     }
@@ -329,38 +368,19 @@ class DocumentSignatureController extends Controller
             ]);
 
             // 1. Generate unique code
-            $unique_code = Str::uuid()->toString();
+            $unique_code = \Illuminate\Support\Str::uuid()->toString();
             $verificationUrl = url('/verification/' . $unique_code);
 
             // 2. Generate QR code PNG (ke file sementara)
             $qrPath = storage_path('app/tmp_qr_' . $unique_code . '.png');
             
-            $options = new QROptions([
-                'outputType' => QRCode::OUTPUT_IMAGE_PNG,
-                'eccLevel' => QRCode::ECC_H,
+            $options = new \chillerlan\QRCode\QROptions([
+                'outputType' => \chillerlan\QRCode\QRCode::OUTPUT_IMAGE_PNG,
+                'eccLevel' => \chillerlan\QRCode\QRCode::ECC_H,
                 'scale' => 10,
                 'imageBase64' => false,
-                'moduleValues' => [
-                    'finder' => '#000000',
-                    'finder_dot' => '#000000',
-                    'finder_dark' => '#000000',
-                    'alignment' => '#000000',
-                    'alignment_dark' => '#000000',
-                    'timing' => '#000000',
-                    'timing_dark' => '#000000',
-                    'format' => '#000000',
-                    'format_dark' => '#000000',
-                    'version' => '#000000',
-                    'version_dark' => '#000000',
-                    'data' => '#000000',
-                    'data_dark' => '#000000',
-                    'darkmodule' => '#000000',
-                    'separator' => '#000000',
-                    'quietzone' => '#FFFFFF',
-                ],
             ]);
-
-            $qrcode = new QRCode($options);
+            $qrcode = new \chillerlan\QRCode\QRCode($options);
             $qrcode->render($verificationUrl, $qrPath);
 
             // 3. Tempel QR code ke PDF pada halaman & posisi yang dipilih
@@ -369,6 +389,7 @@ class DocumentSignatureController extends Controller
             $this->sanitizePDF($pdfPath, $sanitizedPdfPath);
             $pdfPath = $sanitizedPdfPath; // Use the sanitized PDF for further processing
 
+            // --- PERBAIKAN: Selalu simpan hasil TTE di documents/signed_... ---
             $outputPath = storage_path('app/public/documents/signed_' . basename($signature->document_path));
 
             if (!file_exists($pdfPath)) {
@@ -377,7 +398,7 @@ class DocumentSignatureController extends Controller
 
             // Parse PDF using tcpdi_parser
             $pdfData = file_get_contents($pdfPath);
-            $parser = new tcpdi_parser($pdfData, uniqid('parser_'));
+            $parser = new \TCPDI\tcpdi_parser($pdfData, uniqid('parser_'));
             $pdfVersion = $parser->getPDFVersion();
             $pageCount = $parser->getPageCount();
 
@@ -391,55 +412,33 @@ class DocumentSignatureController extends Controller
                 $size = $pdf->getTemplateSize($tpl);
                 $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
                 $pdf->useTemplate($tpl);
-
-                // Add QR code to the specified page
                 if ($i == (int)$request->page) {
-                    // Generate QR code using endroid/qr-code v6.0 with the correct verification URL
-                    $qrCode = new \Endroid\QrCode\QrCode($verificationUrl);
-                    
-                    $writer = new PngWriter();
-                    $result = $writer->write($qrCode);
-                    $qrData = $result->getString();
-
-                    // Convert pixel position to mm
                     $pdfW = $size['width'];
                     $pdfH = $size['height'];
-                    $canvasW = (int)$request->input('canvas_width', 600);
-                    $canvasH = (int)$request->input('canvas_height', 800);
-                    $x = ($request->x / $canvasW) * $pdfW;
-                    $y = ($request->y / $canvasH) * $pdfH;
-
-                    // Add QR code to the page
-                    \Log::info('Menempel QR ke PDF', ['qrImagePath' => $qrPath, 'xPos' => $x, 'yPos' => $y, 'outputPdfPath' => $outputPath]);
-                    $pdf->Image('@' . $qrData, $x, $y, 30, 30);
-                    \Log::info('Selesai menempel QR ke PDF', ['outputPdfPath' => $outputPath]);
+                    $canvasW = $request->input('canvas_width', 600);
+                    $canvasH = $request->input('canvas_height', 800);
+                    $xPos = ($request->x / $canvasW) * $pdfW;
+                    $yPos = ($request->y / $canvasH) * $pdfH;
+                    $pdf->Image($qrPath, $xPos, $yPos, 23, 23);
                 }
             }
-
-            // Output the modified PDF
             $pdf->Output($outputPath, 'F');
-            unlink($qrPath);
-
-            // 4. Simpan data verifikasi
-            Verification::create([
-                'unique_code' => $unique_code,
-                'document_signature_id' => $signature->id,
-                'dosen_id' => auth()->id(),
-                'document_name' => $signature->original_filename,
-                'signed_at' => now(),
-            ]);
-
-            // 5. Update dokumen signature
+            if (file_exists($sanitizedPdfPath)) {
+                unlink($sanitizedPdfPath);
+            }
+            if (file_exists($qrPath)) {
+                unlink($qrPath);
+            }
+            // --- PERBAIKAN: Update path signed_document_path ke documents/signed_... ---
             $signature->update([
                 'status' => 'signed',
                 'signed_at' => now(),
-                'document_path' => 'documents/signed_' . basename($signature->document_path),
+                'signed_document_path' => 'documents/signed_' . basename($signature->document_path),
             ]);
-
-            return redirect()->route('signatures.index')->with('success', 'Dokumen berhasil ditandatangani dan QR code sudah ditempel.');
+            return redirect()->route('signatures.index')
+                ->with('success', 'Document approved and signed successfully.');
         } catch (\Exception $e) {
-            \Log::error('PDF processing error: ' . $e->getMessage());
-            return response()->json(['error' => 'PDF processing failed: ' . $e->getMessage()], 500);
+            return back()->withErrors(['error' => 'Failed to sign document: ' . $e->getMessage()]);
         }
     }
 
@@ -516,7 +515,7 @@ class DocumentSignatureController extends Controller
         return $outputPath;
     }
 
-    private function addQrToPdf($inputPdfPath, $outputPdfPath, $qrImagePath, $page, $x, $y)
+    private function addQrToPdf($inputPdfPath, $outputPdfPath, $qrImagePath, $page, $x, $y, $canvasW = null, $canvasH = null)
     {
         try {
             // Ensure output directory exists
@@ -527,7 +526,7 @@ class DocumentSignatureController extends Controller
 
             // Try to process the original PDF first
             try {
-                return $this->processOriginalPdf($inputPdfPath, $outputPdfPath, $qrImagePath, $page, $x, $y);
+                return $this->processOriginalPdf($inputPdfPath, $outputPdfPath, $qrImagePath, $page, $x, $y, $canvasW, $canvasH);
             } catch (\Exception $e) {
                 \Log::warning('Original PDF processing failed, creating simple PDF: ' . $e->getMessage());
                 return $this->createSimplePdfWithQr($outputPdfPath, $qrImagePath, $page, $x, $y);
@@ -538,7 +537,7 @@ class DocumentSignatureController extends Controller
         }
     }
 
-    private function processOriginalPdf($inputPdfPath, $outputPdfPath, $qrImagePath, $page, $x, $y)
+    private function processOriginalPdf($inputPdfPath, $outputPdfPath, $qrImagePath, $page, $x, $y, $canvasW = null, $canvasH = null)
     {
         // Try to sanitize the PDF first using Ghostscript
         $sanitizedPdfPath = storage_path('app/temp/sanitized_' . basename($inputPdfPath));
@@ -564,18 +563,15 @@ class DocumentSignatureController extends Controller
 
             // Add QR code to the specified page
             if ($i == (int)$page) {
-                // Convert pixel position to mm (assuming canvas size of 600x800)
                 $pdfW = $size['width'];
                 $pdfH = $size['height'];
-                $canvasW = 600; // Default canvas width
-                $canvasH = 800; // Default canvas height
-                
+                // --- PERBAIKAN: gunakan ukuran canvas dari parameter (hasil input frontend) ---
+                $canvasW = $canvasW ?: 600;
+                $canvasH = $canvasH ?: 800;
                 $xPos = ($x / $canvasW) * $pdfW;
                 $yPos = ($y / $canvasH) * $pdfH;
-
-                // Add QR code to the page
-                \Log::info('Menempel QR ke PDF', ['qrImagePath' => $qrImagePath, 'xPos' => $xPos, 'yPos' => $yPos, 'outputPdfPath' => $outputPdfPath]);
-                $pdf->Image($qrImagePath, $xPos, $yPos, 30, 30);
+                \Log::info('Menempel QR ke PDF', ['qrImagePath' => $qrImagePath, 'xPos' => $xPos, 'yPos' => $yPos, 'outputPdfPath' => $outputPdfPath, 'canvasW' => $canvasW, 'canvasH' => $canvasH]);
+                $pdf->Image($qrImagePath, $xPos, $yPos, 23, 23);
                 \Log::info('Selesai menempel QR ke PDF', ['outputPdfPath' => $outputPdfPath]);
             }
         }
@@ -603,7 +599,7 @@ class DocumentSignatureController extends Controller
         $xPos = $x * 0.5; // Convert to mm (approximate)
         $yPos = $y * 0.5; // Convert to mm (approximate)
         
-        $pdf->Image($qrImagePath, $xPos, $yPos, 30, 30);
+        $pdf->Image($qrImagePath, $xPos, $yPos, 23, 23);
         
         // Add some text to indicate this is a signed document
         $pdf->SetFont('Arial', 'B', 12);
@@ -615,5 +611,48 @@ class DocumentSignatureController extends Controller
         $pdf->Output($outputPdfPath, 'F');
         
         return $outputPdfPath;
+    }
+
+    public function downloadQrCode(DocumentSignature $signature)
+    {
+        try {
+            // Download original document
+            $filePath = storage_path('app/public/' . $signature->document_path);
+            
+            if (!file_exists($filePath)) {
+                return back()->withErrors(['error' => 'Original document not found.']);
+            }
+
+            return response()->download($filePath, 'original_' . $signature->original_filename);
+            
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to download original document: ' . $e->getMessage()]);
+        }
+    }
+
+    public function downloadVerifiedQrCode(DocumentSignature $signature)
+    {
+        try {
+            // Check if document is signed
+            if ($signature->status !== 'signed') {
+                return back()->withErrors(['error' => 'Document must be signed to download TTE document.']);
+            }
+
+            // Check if signed document exists
+            if (!$signature->signed_document_path) {
+                return back()->withErrors(['error' => 'TTE document not found.']);
+            }
+
+            $filePath = storage_path('app/public/' . $signature->signed_document_path);
+            
+            if (!file_exists($filePath)) {
+                return back()->withErrors(['error' => 'TTE document file not found.']);
+            }
+
+            return response()->download($filePath, 'tte_' . $signature->original_filename);
+            
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to download TTE document: ' . $e->getMessage()]);
+        }
     }
 } 

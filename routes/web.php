@@ -24,6 +24,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/signatures/{signature}/sign', [DocumentSignatureController::class, 'sign'])->name('signatures.sign');
     Route::post('/signatures/{signature}/reject', [DocumentSignatureController::class, 'reject'])->name('signatures.reject');
     Route::get('/signatures/{signature}/download', [DocumentSignatureController::class, 'download'])->name('signatures.download');
+    Route::get('/signatures/{signature}/download-qr', [DocumentSignatureController::class, 'downloadQrCode'])->name('signatures.download-qr');
+    Route::get('/signatures/{signature}/download-verified-qr', [DocumentSignatureController::class, 'downloadVerifiedQrCode'])->name('signatures.download-verified-qr');
     Route::get('/signatures/{signature}/sign-preview', [DocumentSignatureController::class, 'signPreview'])->name('signatures.sign-preview');
     Route::post('/signatures/{signature}/sign-finalize', [DocumentSignatureController::class, 'signFinalize'])->name('signatures.sign-finalize');
     Route::post('/signatures/{signature}/approve-qr', [DocumentSignatureController::class, 'approveQrPlacement'])->name('signatures.approve-qr');
