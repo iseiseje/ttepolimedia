@@ -65,7 +65,7 @@ class DocumentSignatureController extends Controller
             $file = $request->file('document');
             $path = $file->store('documents', 'public');
 
-            DocumentSignature::create([
+            $doc = DocumentSignature::create([
                 'guest_id' => $user->id, // Dosen/Admin is both guest and dosen
                 'dosen_id' => $user->id,
                 'document_path' => $path,
@@ -116,8 +116,18 @@ class DocumentSignatureController extends Controller
             ]);
 
             // 1. Generate unique code
-            $unique_code = \Illuminate\Support\Str::uuid()->toString();
-            $verificationUrl = url('/verification/' . $unique_code);
+            $verification = Verification::where('document_signature_id', $signature->id)->first();
+            if (!$verification) {
+                $unique_code = \Illuminate\Support\Str::uuid()->toString();
+                $verification = Verification::create([
+                    'document_signature_id' => $signature->id,
+                    'unique_code' => $unique_code,
+                    'dosen_id' => $signature->dosen_id,
+                    'document_name' => $signature->original_filename,
+                    'signed_at' => now()
+                ]);
+            }
+            $verificationUrl = url('/verification/' . $verification->unique_code);
 
             // 2. Generate QR code PNG (MERAH, pakai endroid/qr-code v6.x builder)
             try {
@@ -133,7 +143,7 @@ class DocumentSignatureController extends Controller
                 );
                 $writer = new \Endroid\QrCode\Writer\PngWriter();
                 $qrResult = $writer->write($qrCode);
-                $qrPath = storage_path('app/tmp_qr_' . $unique_code . '.png');
+                $qrPath = storage_path('app/tmp_qr_' . $verification->unique_code . '.png');
                 $qrResult->saveToFile($qrPath);
                 \Log::info('QR merah berhasil dibuat', ['qrPath' => $qrPath]);
             } catch (\Exception $e) {
@@ -175,14 +185,18 @@ class DocumentSignatureController extends Controller
             \Log::info('Signature record diupdate setelah QR merah', ['signature_id' => $signature->id]);
 
             // 5. Create verification record
-            Verification::create([
-                'document_signature_id' => $signature->id,
-                'unique_code' => $unique_code,
-                'dosen_id' => $signature->dosen_id,
-                'document_name' => $signature->original_filename,
-                'signed_at' => now()
-            ]);
-            \Log::info('Verification record dibuat', ['signature_id' => $signature->id, 'unique_code' => $unique_code]);
+            $verification = Verification::where('document_signature_id', $signature->id)->first();
+            if (!$verification) {
+                $unique_code = \Illuminate\Support\Str::uuid()->toString();
+                $verification = Verification::create([
+                    'document_signature_id' => $signature->id,
+                    'unique_code' => $unique_code,
+                    'dosen_id' => $signature->dosen_id,
+                    'document_name' => $signature->original_filename,
+                    'signed_at' => now()
+                ]);
+            }
+            \Log::info('Verification record dibuat', ['signature_id' => $signature->id, 'unique_code' => $verification->unique_code]);
 
             // 6. Clean up temporary QR code file
             if (file_exists($qrPath)) {
@@ -212,8 +226,18 @@ class DocumentSignatureController extends Controller
 
         // Approve the document
         // Generate QR code warna hitam (pakai endroid/qr-code v6.x builder)
-        $unique_code = Verification::where('document_signature_id', $signature->id)->value('unique_code');
-        $verificationUrl = url('/verification/' . $unique_code);
+        $verification = Verification::where('document_signature_id', $signature->id)->first();
+        if (!$verification) {
+            $unique_code = \Illuminate\Support\Str::uuid()->toString();
+            $verification = Verification::create([
+                'document_signature_id' => $signature->id,
+                'unique_code' => $unique_code,
+                'dosen_id' => $signature->dosen_id,
+                'document_name' => $signature->original_filename,
+                'signed_at' => now()
+            ]);
+        }
+        $verificationUrl = url('/verification/' . $verification->unique_code);
         try {
             $qrCode = new \Endroid\QrCode\QrCode(
                 $verificationUrl,
@@ -227,7 +251,7 @@ class DocumentSignatureController extends Controller
             );
             $writer = new \Endroid\QrCode\Writer\PngWriter();
             $qrResult = $writer->write($qrCode);
-            $qrPath = storage_path('app/tmp_qr_final_' . $unique_code . '.png');
+            $qrPath = storage_path('app/tmp_qr_final_' . $verification->unique_code . '.png');
             $qrResult->saveToFile($qrPath);
             \Log::info('QR hitam berhasil dibuat', ['qrPath' => $qrPath]);
         } catch (\Exception $e) {
@@ -257,6 +281,17 @@ class DocumentSignatureController extends Controller
             'signed_document_path' => 'signed_documents/signed_final_' . basename($signature->document_path),
         ]);
         \Log::info('Signature record diupdate setelah QR hitam', ['signature_id' => $signature->id]);
+        // Tambahkan: buat verification jika belum ada
+        if (!Verification::where('document_signature_id', $signature->id)->exists()) {
+            $unique_code = \Illuminate\Support\Str::uuid()->toString();
+            Verification::create([
+                'document_signature_id' => $signature->id,
+                'unique_code' => $unique_code,
+                'dosen_id' => $signature->dosen_id,
+                'document_name' => $signature->original_filename,
+                'signed_at' => now()
+            ]);
+        }
         if (file_exists($qrPath)) {
             unlink($qrPath);
         }
@@ -276,6 +311,17 @@ class DocumentSignatureController extends Controller
             'status' => 'signed',
             'signed_at' => now()
         ]);
+        $verification = Verification::where('document_signature_id', $signature->id)->first();
+        if (!$verification) {
+            $unique_code = \Illuminate\Support\Str::uuid()->toString();
+            $verification = Verification::create([
+                'document_signature_id' => $signature->id,
+                'unique_code' => $unique_code,
+                'dosen_id' => $signature->dosen_id,
+                'document_name' => $signature->original_filename,
+                'signed_at' => now()
+            ]);
+        }
 
         return redirect()->route('signatures.index')
             ->with('success', 'Document signed successfully.');
@@ -368,11 +414,21 @@ class DocumentSignatureController extends Controller
             ]);
 
             // 1. Generate unique code
-            $unique_code = \Illuminate\Support\Str::uuid()->toString();
-            $verificationUrl = url('/verification/' . $unique_code);
+            $verification = Verification::where('document_signature_id', $signature->id)->first();
+            if (!$verification) {
+                $unique_code = \Illuminate\Support\Str::uuid()->toString();
+                $verification = Verification::create([
+                    'document_signature_id' => $signature->id,
+                    'unique_code' => $unique_code,
+                    'dosen_id' => $signature->dosen_id,
+                    'document_name' => $signature->original_filename,
+                    'signed_at' => now()
+                ]);
+            }
+            $verificationUrl = url('/verification/' . $verification->unique_code);
 
             // 2. Generate QR code PNG (ke file sementara)
-            $qrPath = storage_path('app/tmp_qr_' . $unique_code . '.png');
+            $qrPath = storage_path('app/tmp_qr_' . $verification->unique_code . '.png');
             
             $options = new \chillerlan\QRCode\QROptions([
                 'outputType' => \chillerlan\QRCode\QRCode::OUTPUT_IMAGE_PNG,
@@ -435,6 +491,18 @@ class DocumentSignatureController extends Controller
                 'signed_at' => now(),
                 'signed_document_path' => 'documents/signed_' . basename($signature->document_path),
             ]);
+            // Tambahkan: buat verification jika belum ada
+            $verification = Verification::where('document_signature_id', $signature->id)->first();
+            if (!$verification) {
+                $unique_code = \Illuminate\Support\Str::uuid()->toString();
+                $verification = Verification::create([
+                    'document_signature_id' => $signature->id,
+                    'unique_code' => $unique_code,
+                    'dosen_id' => $signature->dosen_id,
+                    'document_name' => $signature->original_filename,
+                    'signed_at' => now()
+                ]);
+            }
             return redirect()->route('signatures.index')
                 ->with('success', 'Document approved and signed successfully.');
         } catch (\Exception $e) {
