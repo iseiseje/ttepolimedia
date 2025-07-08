@@ -37,6 +37,23 @@ Route::post('/signatures/{signature}/sign-finalize-as-guest', [DocumentSignature
 Route::get('/verification/{unique_code}', [VerificationController::class, 'show'])->name('verification.show');
 Route::get('/verification/{unique_code}/download', [VerificationController::class, 'download'])->name('verification.download');
 
+// Debug route to check QR position data
+Route::get('/debug/qr-position/{signature}', function($signature) {
+    $signature = \App\Models\DocumentSignature::find($signature);
+    if (!$signature) {
+        return 'Signature not found';
+    }
+    return [
+        'id' => $signature->id,
+        'status' => $signature->status,
+        'qr_page' => $signature->qr_page,
+        'qr_x' => $signature->qr_x,
+        'qr_y' => $signature->qr_y,
+        'qr_canvas_width' => $signature->qr_canvas_width,
+        'qr_canvas_height' => $signature->qr_canvas_height,
+    ];
+})->name('debug.qr-position');
+
 // Route::middleware(['auth', 'adminrole'])->group(function () {
 //     Route::resource('users', UserController::class);
 // });

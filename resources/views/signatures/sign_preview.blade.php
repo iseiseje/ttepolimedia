@@ -238,25 +238,32 @@
             // Kirim juga ukuran canvas agar backend bisa konversi posisi
             const canvasW = canvas.width;
             const canvasH = canvas.height;
-            if (!document.getElementById('canvas_width')) {
-                let cw = document.createElement('input');
+            let cw = document.getElementById('canvas_width');
+            if (!cw) {
+                cw = document.createElement('input');
                 cw.type = 'hidden';
                 cw.name = 'canvas_width';
                 cw.id = 'canvas_width';
-                cw.value = canvasW;
                 document.getElementById('qrForm').appendChild(cw);
-            } else {
-                document.getElementById('canvas_width').value = canvasW;
             }
-            if (!document.getElementById('canvas_height')) {
-                let ch = document.createElement('input');
+            cw.value = canvasW;
+            let ch = document.getElementById('canvas_height');
+            if (!ch) {
+                ch = document.createElement('input');
                 ch.type = 'hidden';
                 ch.name = 'canvas_height';
                 ch.id = 'canvas_height';
-                ch.value = canvasH;
                 document.getElementById('qrForm').appendChild(ch);
-            } else {
-                document.getElementById('canvas_height').value = canvasH;
             }
+            ch.value = canvasH;
+            
+            // Debug: Log the values being sent
+            console.log('Submitting QR position:', {
+                page: document.getElementById('page').value,
+                x: x,
+                y: y,
+                canvas_width: canvasW,
+                canvas_height: canvasH
+            });
         });
     </script>

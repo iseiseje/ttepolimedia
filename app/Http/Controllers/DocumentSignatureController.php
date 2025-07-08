@@ -71,7 +71,13 @@ class DocumentSignatureController extends Controller
                 'document_path' => $path,
                 'original_filename' => $file->getClientOriginalName(),
                 'notes' => $request->notes,
-                'status' => 'pending' // Will be signed immediately
+                'status' => 'pending',
+                // Default posisi QR (pojok kanan bawah halaman 1, canvas 600x800)
+                'qr_page' => 1,
+                'qr_x' => 500,
+                'qr_y' => 700,
+                'qr_canvas_width' => 600,
+                'qr_canvas_height' => 800,
             ]);
 
             return redirect()->route('signatures.index')
@@ -109,6 +115,9 @@ class DocumentSignatureController extends Controller
     public function signFinalizeAsGuest(Request $request, DocumentSignature $signature)
     {
         try {
+            // Debug: Log all request data
+            \Log::info('signFinalizeAsGuest - Request data:', $request->all());
+            
             $request->validate([
                 'page' => 'required|integer|min:1',
                 'x' => 'required|numeric',
@@ -173,16 +182,41 @@ class DocumentSignatureController extends Controller
             }
 
             // 4. Update signature record - QR code placed but not signed yet
-            $signature->update([
-                'status' => 'qr_placed', // New status indicating QR code has been placed
-                'signed_document_path' => 'documents/signed_' . basename($signature->document_path),
-                'qr_page' => $request->page,
-                'qr_x' => $request->x,
-                'qr_y' => $request->y,
-                'qr_canvas_width' => $request->input('canvas_width'),
-                'qr_canvas_height' => $request->input('canvas_height'),
+            \Log::info('Before update - QR position data:', [
+                'page' => $request->page,
+                'x' => $request->x,
+                'y' => $request->y,
+                'canvas_width' => $request->input('canvas_width'),
+                'canvas_height' => $request->input('canvas_height'),
             ]);
-            \Log::info('Signature record diupdate setelah QR merah', ['signature_id' => $signature->id]);
+            
+            try {
+                $signature->update([
+                    'status' => 'qr_placed', // New status indicating QR code has been placed
+                    'signed_document_path' => 'documents/signed_' . basename($signature->document_path),
+                    'qr_page' => $request->page,
+                    'qr_x' => $request->x,
+                    'qr_y' => $request->y,
+                    'qr_canvas_width' => $request->input('canvas_width'),
+                    'qr_canvas_height' => $request->input('canvas_height'),
+                ]);
+                
+                // Refresh the model to get updated values
+                $signature->refresh();
+                
+                \Log::info('After update - QR position data:', [
+                    'signature_id' => $signature->id,
+                    'qr_page' => $signature->qr_page,
+                    'qr_x' => $signature->qr_x,
+                    'qr_y' => $signature->qr_y,
+                    'qr_canvas_width' => $signature->qr_canvas_width,
+                    'qr_canvas_height' => $signature->qr_canvas_height,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Failed to update QR position data: ' . $e->getMessage());
+                \Log::error('Exception trace: ' . $e->getTraceAsString());
+                throw $e;
+            }
 
             // 5. Create verification record
             $verification = Verification::where('document_signature_id', $signature->id)->first();
@@ -224,6 +258,28 @@ class DocumentSignatureController extends Controller
             return back()->withErrors(['error' => 'Document does not have QR code placed or has already been processed.']);
         }
 
+        // Debug: Log QR position values
+        \Log::info('Checking QR position for approval:', [
+            'signature_id' => $signature->id,
+            'qr_page' => $signature->qr_page,
+            'qr_x' => $signature->qr_x,
+            'qr_y' => $signature->qr_y,
+            'qr_canvas_width' => $signature->qr_canvas_width,
+            'qr_canvas_height' => $signature->qr_canvas_height,
+        ]);
+        
+        // Validasi posisi QR harus ada
+        if (
+            is_null($signature->qr_page) ||
+            is_null($signature->qr_x) ||
+            is_null($signature->qr_y) ||
+            is_null($signature->qr_canvas_width) ||
+            is_null($signature->qr_canvas_height)
+        ) {
+            \Log::error('QR position validation failed - null values found');
+            return back()->withErrors(['error' => 'Posisi QR code tidak ditemukan. Tidak bisa approve TTE.']);
+        }
+
         // Approve the document
         // Generate QR code warna hitam (pakai endroid/qr-code v6.x builder)
         $verification = Verification::where('document_signature_id', $signature->id)->first();
@@ -253,13 +309,17 @@ class DocumentSignatureController extends Controller
             $qrResult = $writer->write($qrCode);
             $qrPath = storage_path('app/tmp_qr_final_' . $verification->unique_code . '.png');
             $qrResult->saveToFile($qrPath);
-            \Log::info('QR hitam berhasil dibuat', ['qrPath' => $qrPath]);
+            // DEBUG: Simpan juga ke public untuk dicek manual
+            $debugQrPath = storage_path('app/public/tmp_qr_debug_final.png');
+            copy($qrPath, $debugQrPath);
+            
+            \Log::info('QR hitam berhasil dibuat', ['qrPath' => $qrPath, 'debugQrPath' => $debugQrPath]);
         } catch (\Exception $e) {
             \Log::error('Gagal generate QR hitam: ' . $e->getMessage());
             return back()->withErrors(['error' => 'Gagal generate QR hitam: ' . $e->getMessage()]);
         }
         // Tempel QR hitam ke PDF hasil final
-        $inputPdfPath = storage_path('app/public/' . $signature->signed_document_path);
+        $inputPdfPath = storage_path('app/public/' . $signature->signed_document_path); // ini file QR merah
         $outputPdfPath = storage_path('app/public/signed_documents/signed_final_' . basename($signature->document_path));
 
         // Tambahkan pengecekan file input
@@ -268,13 +328,28 @@ class DocumentSignatureController extends Controller
             return back()->withErrors(['error' => 'File dokumen dengan QR merah tidak ditemukan. Tidak bisa approve TTE.']);
         }
         try {
+            \Log::info('Approve: Param QR', [
+                'inputPdfPath' => $inputPdfPath,
+                'outputPdfPath' => $outputPdfPath,
+                'qrPath' => $qrPath,
+                'qr_page' => $signature->qr_page,
+                'qr_x' => $signature->qr_x,
+                'qr_y' => $signature->qr_y,
+                'qr_canvas_width' => $signature->qr_canvas_width,
+                'qr_canvas_height' => $signature->qr_canvas_height,
+            ]);
             $this->addQrToPdf($inputPdfPath, $outputPdfPath, $qrPath, $signature->qr_page, $signature->qr_x, $signature->qr_y, $signature->qr_canvas_width, $signature->qr_canvas_height);
             \Log::info('QR hitam berhasil ditempel ke PDF', ['outputPdfPath' => $outputPdfPath]);
         } catch (\Exception $e) {
             \Log::error('Gagal menempel QR hitam ke PDF: ' . $e->getMessage());
             return back()->withErrors(['error' => 'Gagal menempel QR hitam ke PDF: ' . $e->getMessage()]);
         }
-        // Update path dan status
+        // Pastikan file output benar-benar ada
+        if (!file_exists($outputPdfPath)) {
+            \Log::error('File output signed_final tidak ditemukan setelah approve: ' . $outputPdfPath);
+            return back()->withErrors(['error' => 'File hasil TTE (QR hitam) tidak ditemukan. Proses gagal.']);
+        }
+        // Update path dan status HANYA jika file output ada
         $signature->update([
             'status' => 'signed',
             'signed_at' => now(),
@@ -411,6 +486,15 @@ class DocumentSignatureController extends Controller
                 'page' => 'required|integer|min:1',
                 'x' => 'required|numeric',
                 'y' => 'required|numeric',
+            ]);
+
+            // Simpan posisi QR ke database
+            $signature->update([
+                'qr_page' => $request->page,
+                'qr_x' => $request->x,
+                'qr_y' => $request->y,
+                'qr_canvas_width' => $request->input('canvas_width', 600),
+                'qr_canvas_height' => $request->input('canvas_height', 800),
             ]);
 
             // 1. Generate unique code
@@ -717,7 +801,10 @@ class DocumentSignatureController extends Controller
                 return back()->withErrors(['error' => 'TTE document file not found.']);
             }
 
-            return response()->download($filePath, 'tte_' . $signature->original_filename);
+            // Ambil nama file sesuai file hasil approve (signed_final_...)
+            $downloadName = basename($signature->signed_document_path);
+
+            return response()->download($filePath, $downloadName);
             
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to download TTE document: ' . $e->getMessage()]);

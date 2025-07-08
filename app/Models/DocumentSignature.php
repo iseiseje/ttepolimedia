@@ -17,7 +17,12 @@ class DocumentSignature extends Model
         'original_filename',
         'status',
         'notes',
-        'signed_at'
+        'signed_at',
+        'qr_page',
+        'qr_x',
+        'qr_y',
+        'qr_canvas_width',
+        'qr_canvas_height'
     ];
 
     protected $casts = [

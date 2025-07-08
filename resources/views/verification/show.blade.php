@@ -21,13 +21,13 @@
                 <h1 class="text-3xl font-bold text-orange-700 mb-2">Dokumen Belum Diverifikasi</h1>
                 <p class="text-gray-600">QR code sudah ditempel, namun dokumen <span class="font-semibold text-orange-700">belum ditandatangani dosen</span>.<br>Dokumen ini <span class="font-semibold">BELUM SAH</span>.</p>
             @else
-                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                    </svg>
-                </div>
-                <h1 class="text-3xl font-bold text-green-700 mb-2">Dokumen Sudah Ditanda Tangani Digital</h1>
-                <p class="text-gray-600">Dokumen ini telah diverifikasi dan ditanda tangani secara digital</p>
+            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h1 class="text-3xl font-bold text-green-700 mb-2">Dokumen Sudah Ditanda Tangani Digital</h1>
+            <p class="text-gray-600">Dokumen ini telah diverifikasi dan ditanda tangani secara digital</p>
             @endif
         </div>
 
@@ -45,10 +45,10 @@
                 <div>
                     <h3 class="font-semibold text-gray-700 mb-2">Informasi Tanda Tangan:</h3>
                     @if($status === 'signed')
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-medium">Ditanda Tangani Oleh:</span></p>
-                        <p class="text-gray-800 mb-3">{{ $verification->dosen->name }}</p>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-medium">Tanggal & Waktu:</span></p>
-                        <p class="text-gray-800 mb-3">{{ $verification->signed_at->format('d-m-Y H:i:s') }}</p>
+                    <p class="text-sm text-gray-600 mb-1"><span class="font-medium">Ditanda Tangani Oleh:</span></p>
+                    <p class="text-gray-800 mb-3">{{ $verification->dosen->name }}</p>
+                    <p class="text-sm text-gray-600 mb-1"><span class="font-medium">Tanggal & Waktu:</span></p>
+                    <p class="text-gray-800 mb-3">{{ $verification->signed_at->format('d-m-Y H:i:s') }}</p>
                     @else
                         <p class="text-orange-700 text-sm">Belum ditandatangani dosen.</p>
                     @endif
@@ -76,10 +76,10 @@
 
         <div class="mt-6 text-center">
             @if($status === 'signed')
-                <p class="text-xs text-gray-500">
-                    Dokumen ini telah ditanda tangani secara digital dan diverifikasi menggunakan sistem keamanan blockchain.
-                    <br>Kode verifikasi: {{ $verification->unique_code }}
-                </p>
+            <p class="text-xs text-gray-500">
+                Dokumen ini telah ditanda tangani secara digital dan diverifikasi menggunakan sistem keamanan blockchain.
+                <br>Kode verifikasi: {{ $verification->unique_code }}
+            </p>
             @else
                 <p class="text-xs text-orange-600">
                     QR code sudah ditempel, namun dokumen <span class="font-semibold">belum ditandatangani dosen</span>.<br>

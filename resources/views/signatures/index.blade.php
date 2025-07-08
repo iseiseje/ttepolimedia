@@ -9,6 +9,19 @@
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
+                    @if ($errors->any())
+                        <div class="mb-4">
+                            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                                <strong class="font-bold">Error!</strong>
+                                <ul class="mt-2 mb-0">
+                                    @foreach ($errors->all() as $error)
+                                        <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        </div>
+                    @endif
+
                     @if(auth()->user()->isGuest() || auth()->user()->isDosen() || auth()->user()->isAdmin())
                         <div class="mb-4">
                             <a href="{{ route('signatures.create') }}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
@@ -25,6 +38,9 @@
                         <table class="min-w-full bg-white">
                             <thead>
                                 <tr>
+                                    <th class="px-6 py-3 border-b-2 border-gray-300 text-left text-sm leading-4 font-medium text-gray-500 uppercase tracking-wider">
+                                        ID
+                                    </th>
                                     <th class="px-6 py-3 border-b-2 border-gray-300 text-left text-sm leading-4 font-medium text-gray-500 uppercase tracking-wider">
                                         Document
                                     </th>
@@ -67,6 +83,9 @@
                             <tbody>
                                 @foreach($signatures as $signature)
                                     <tr class="@if($signature->status === 'signed') bg-green-50 @elseif($signature->status === 'rejected') bg-red-50 @elseif($signature->status === 'qr_placed') bg-blue-50 @else bg-yellow-50 @endif">
+                                        <td class="px-6 py-4 whitespace-no-wrap border-b border-gray-500">
+                                            <span class="text-sm text-gray-500">#{{ $signature->id }}</span>
+                                        </td>
                                         <td class="px-6 py-4 whitespace-no-wrap border-b border-gray-500">
                                             <div class="flex items-center">
                                                 @if($signature->status === 'signed')
@@ -196,11 +215,11 @@
                                                 @if($signature->status === 'signed')
                                                     <a href="{{ route('signatures.download-verified-qr', $signature) }}" 
                                                        class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                                        </svg>
+                                                    </svg>
                                                         TTE Dokumen
-                                                    </a>
+                                                </a>
                                                 @endif
 
                                                 @if((auth()->user()->isDosen() || auth()->user()->isAdmin()) && $signature->status === 'pending')
